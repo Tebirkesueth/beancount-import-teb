@@ -58,6 +58,9 @@ class ImporterSource(DescriptionBasedSource):
 
     def prepare(self, journal: 'JournalEditor', results: SourceResults) -> None:
         results.add_account(self.account)
+        
+        # instance of journal
+        self.journal = journal
 
         entries = OrderedDict() #type: Dict[Hashable, List[Directive]]
         for f in self.files:
@@ -125,7 +128,11 @@ class ImporterSource(DescriptionBasedSource):
                 entry.narration)
 
     def _make_import_result(self, imported_entry:Directive):
-        if isinstance(imported_entry, Transaction): balance_amounts(imported_entry)
+        
+        # grab tolerance requirement from the journal settings. 
+        inferred_tolerance_default = self.journal.options_map['inferred_tolerance_default']
+        
+        if isinstance(imported_entry, Transaction): balance_amounts(imported_entry, inferred_tolerance_default)
         result = ImportResult(
             date=imported_entry.date, info=get_info(imported_entry), entries=[imported_entry])
         # delete filename since it is used by beancount-import to determine if the
@@ -145,13 +152,13 @@ def get_info(raw_entry: Directive) -> dict:
         line=raw_entry.meta['lineno'],
     )
 
-def balance_amounts(txn:Transaction)-> None:
+def balance_amounts(txn:Transaction, inferred_tolerance_default: Dict)-> None:
     """Add FIXME account for the remaing amount to balance accounts"""
     inventory = SimpleInventory()
     for posting in txn.postings:
         inventory += get_weight(convert_costspec_to_cost(posting))
     for currency in inventory:
-        if abs(inventory[currency]) > 0.001:
+        if abs(inventory[currency]) > inferred_tolerance_default.get("*"):
             txn.postings.append(
                 Posting(
                     account=FIXME_ACCOUNT,
